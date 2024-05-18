@@ -2,23 +2,26 @@ const express = require("express");
 const router = express.Router();
 const listController = require("../controllers/list");
 const multer = require("multer");
+const path = require("path");
 const fs = require("fs");
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = "../config";
-
+    const uploadDir = path.join(__dirname, "../config/uploads");
     fs.mkdir(uploadDir, { recursive: true }, function (err) {
       if (err) {
         console.error("Error creating upload directory:", err);
+        cb(err, null);
+      } else {
+        cb(null, uploadDir);
       }
-      cb(null, uploadDir);
     });
   },
   filename: function (req, file, cb) {
     cb(null, file.originalname);
   },
 });
+
 const upload = multer({ storage: storage });
 
 /*
