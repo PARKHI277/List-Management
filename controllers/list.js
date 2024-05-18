@@ -1,6 +1,11 @@
 const List = require("../models/list");
 const User = require("../models/user");
+const multer = require("multer");
 const csvParser = require("csv-parser");
+const { Readable } = require("stream");
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
 const fs = require("fs");
 
 const createList = async (req, res) => {
@@ -22,7 +27,6 @@ const createList = async (req, res) => {
   }
 };
 
-
 const addUsersFromCSV = async (req, res) => {
   const { listId } = req.params;
   const results = [];
@@ -38,17 +42,50 @@ const addUsersFromCSV = async (req, res) => {
       });
     }
 
-    // Pipe the request stream directly to the CSV parser
-    req
-      .pipe(csvParser())
-      .on("data", async (data) => {
-        try {
-          const { name, email, ...customProps } = data;
-          if (!name || !email) {
-            errors.push({ ...data, error: "Name and email are required" });
-            return;
-          }
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      });
+    }
 
+    // Convert the buffer to a readable stream
+    const stream = Readable.from(req.file.buffer);
+
+    stream
+      .pipe(csvParser())
+      .on("data", (data) => {
+        results.push(data);
+        if (results.length > 10000) {
+          stream.pause();
+          processChunk(results.splice(0, results.length));
+          stream.resume();
+        }
+      })
+      .on("end", async () => {
+        if (results.length > 0) {
+          await processChunk(results);
+        }
+        const totalCount = await User.countDocuments({ listId: listId });
+        res.status(200).json({
+          success: true,
+          message: "Users processed from CSV",
+          addedCount,
+          errorCount: errors.length,
+          totalCount,
+          errors,
+        });
+      });
+
+    const processChunk = async (chunk) => {
+      for (let row of chunk) {
+        const { name, email, ...customProps } = row;
+        if (!name || !email) {
+          errors.push({ ...row, error: "Name and email are required" });
+          continue;
+        }
+
+        try {
           const properties = new Map();
           list.customProperties.forEach((prop) => {
             properties.set(
@@ -67,20 +104,10 @@ const addUsersFromCSV = async (req, res) => {
           await user.save();
           addedCount++;
         } catch (err) {
-          errors.push({ ...data, error: err.message });
+          errors.push({ ...row, error: err.message });
         }
-      })
-      .on("end", async () => {
-        const totalCount = await User.countDocuments({ listId: listId });
-        res.status(200).json({
-          success: true,
-          message: "Users processed from CSV",
-          addedCount,
-          errorCount: errors.length,
-          totalCount,
-          errors,
-        });
-      });
+      }
+    };
   } catch (error) {
     console.log(error);
     res.status(400).json({
