@@ -4,7 +4,6 @@ const multer = require("multer");
 const csvParser = require("csv-parser");
 const { Readable } = require("stream");
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
 
 const fs = require("fs");
 
