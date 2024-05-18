@@ -6,7 +6,7 @@ const fs = require("fs");
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = "../config/uploads";
+    const uploadDir = "../config";
 
     fs.mkdir(uploadDir, { recursive: true }, function (err) {
       if (err) {
